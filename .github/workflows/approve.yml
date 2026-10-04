@@ -1,0 +1,29 @@
+name: Approve
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GHP }}
+          IDS: ${{ vars.IDS }}
+        run: |
+          me=$(gh api user --jq .login)
+          for id in $IDS; do
+            gh pr list -R microsoft/winget-pkgs --state all --search "$id in:title" --limit 100 --json number,title,author,latestReviews |
+              jq -r --arg id "$id" --arg me "$me" '.[]
+                | select(.title | split(" ") | index($id))
+                | select(.author.login != $me)
+                | select([.latestReviews[] | select(.author.login == $me and .state == "APPROVED")] | length == 0)
+                | .number' |
+              while read -r n; do
+                gh pr review "$n" -R microsoft/winget-pkgs --approve
+              done
+          done
